@@ -1,26 +1,19 @@
-// ==UserScript==
-// @id          iitc-Po2AMap
-// @name        IITC Plugin: Portal to AMap
-// @namespace   https://github.com/Xyinkl/IITC-Po2AMap
-// @version     0.1.0
-// @description Open selected IITC portal in AMap (Gaode Map)
-// @match       https://intel.ingress.com/*
-// @grant       none
-// ==/UserScript==
+// IITC plugin: Portal to AMap (Gaode)
 
 function wrapper(plugin_info) {
+
   if (typeof window.plugin !== 'function') window.plugin = function(){};
   window.plugin.portal2amap = {};
   const self = window.plugin.portal2amap;
 
   self.id = 'portal2amap';
   self.title = '打开高德地图';
-  self.version = '0.1.0';
+  self.version = '0.1.2';
 
-  /* ---------------- 坐标转换 ---------------- */
+  /* ---------- 坐标转换 ---------- */
 
   self.outOfChina = function(lat, lon) {
-    return (lon < 72.004 || lon > 137.8347) || (lat < 0.8293 || lat > 55.8271);
+    return lon < 72.004 || lon > 137.8347 || lat < 0.8293 || lat > 55.8271;
   };
 
   self.transformLat = function(x, y) {
@@ -42,9 +35,9 @@ function wrapper(plugin_info) {
   };
 
   self.wgs84togcj02 = function(lon, lat) {
-    const pi = Math.PI;
     const a = 6378245.0;
     const ee = 0.00669342162296594323;
+    const pi = Math.PI;
     if (self.outOfChina(lat, lon)) return [lon, lat];
 
     let dLat = self.transformLat(lon - 105, lat - 35);
@@ -60,88 +53,45 @@ function wrapper(plugin_info) {
     return [lon + dLon, lat + dLat];
   };
 
-  /* ---------------- Portal 获取（关键修复点） ---------------- */
+  /* ---------- 获取当前 Portal ---------- */
 
-  self.getSelectedPortal = function() {
-    const guid =
-      window.selectedPortal ||
+  self.getPortal = function() {
+    const guid = window.selectedPortal ||
       (window.portalDetail && window.portalDetail.guid);
-
     if (!guid || !window.portals || !window.portals[guid]) return null;
     return window.portals[guid];
   };
 
-  /* ---------------- UI ---------------- */
+  /* ---------- UI ---------- */
 
   self.addButton = function() {
-    if (document.getElementById('amap-float-btn')) return;
+    if (document.getElementById('amap-btn')) return;
 
-    const btn = window.jQuery(`
-      <div id="amap-float-btn"
-        style="
-          position:fixed;
-          left:10px;
-          top:65%;
-          z-index:9999;
-          width:36px;
-          height:36px;
-          background:#fff;
-          border-radius:50%;
-          box-shadow:0 2px 8px rgba(0,0,0,.3);
-          cursor:pointer;
-          display:flex;
-          align-items:center;
-          justify-content:center;
-          user-select:none;
-        "
-        title="在高德地图中打开">
-        🧭
-      </div>
-    `);
+    const btn = window.jQuery(
+      '<div id="amap-btn" ' +
+      'style="position:fixed;left:10px;top:65%;z-index:9999;' +
+      'width:36px;height:36px;border-radius:50%;' +
+      'background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.3);' +
+      'display:flex;align-items:center;justify-content:center;' +
+      'cursor:pointer;">🧭</div>'
+    );
 
-    let moved = false;
-    let startX, startY, startLeft, startTop;
-
-    btn.on('mousedown', function(e) {
-      moved = false;
-      startX = e.clientX;
-      startY = e.clientY;
-      startLeft = parseInt(btn.css('left'));
-      startTop = parseInt(btn.css('top'));
-
-      window.jQuery(document).on('mousemove.amap', function(ev) {
-        const dx = ev.clientX - startX;
-        const dy = ev.clientY - startY;
-        if (Math.abs(dx) > 5 || Math.abs(dy) > 5) moved = true;
-        btn.css({ left: startLeft + dx, top: startTop + dy });
-      });
-
-      window.jQuery(document).on('mouseup.amap', function() {
-        window.jQuery(document).off('.amap');
-      });
-    });
-
-    btn.on('click', function(e) {
-      if (moved) return;
-
-      const portal = self.getSelectedPortal();
-      if (!portal || !portal._latlng) {
+    btn.on('click', function() {
+      const p = self.getPortal();
+      if (!p || !p._latlng) {
         alert('请先选中一个 Portal');
         return;
       }
 
-      const lat = portal._latlng.lat;
-      const lon = portal._latlng.lng;
-      const [gcjLon, gcjLat] = self.wgs84togcj02(lon, lat);
-
-      const name =
-        portal.options?.data?.title ||
-        portal.options?.data?.name ||
-        'Portal';
+      const lat = p._latlng.lat;
+      const lon = p._latlng.lng;
+      const [glon, glat] = self.wgs84togcj02(lon, lat);
+      const name = p.options?.data?.title || 'Portal';
 
       const url =
-        `https://uri.amap.com/marker?position=${gcjLon},${gcjLat}` +
-        `&name=${encodeURIComponent(name)}&coordinate=gaode`;
+        'https://uri.amap.com/marker?position=' +
+        glon + ',' + glat +
+        '&name=' + encodeURIComponent(name);
 
       window.open(url, '_blank');
     });
@@ -149,21 +99,14 @@ function wrapper(plugin_info) {
     window.jQuery('body').append(btn);
   };
 
-  /* ---------------- Setup ---------------- */
-
   self.setup = function() {
-    if (self.loaded) return;
-    self.loaded = true;
     self.addButton();
     console.log('[portal2amap] loaded');
   };
 
   const setup = function() {
-    if (window.iitcLoaded) {
-      self.setup();
-    } else {
-      window.addHook('iitcLoaded', self.setup);
-    }
+    if (window.iitcLoaded) self.setup();
+    else window.addHook('iitcLoaded', self.setup);
   };
 
   setup.info = plugin_info;
@@ -172,6 +115,7 @@ function wrapper(plugin_info) {
   if (window.iitcLoaded) setup();
 }
 
+// inject
 const script = document.createElement('script');
 script.textContent = '(' + wrapper + ')({});';
 (document.body || document.head).appendChild(script);
